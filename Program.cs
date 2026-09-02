@@ -20,6 +20,8 @@ namespace ForceFeedback
         public float Kd { get; set; } = 2.5f;
         public float MaxIntegral { get; set; } = 0.35f;
 
+        public bool InvertSteering { get; set; } = true;
+        public float CenterBoost { get; set; } = 0.0f;
         public float MaxPidForce { get; set; } = 0.45f;
         public float MaxTotalForce { get; set; } = 1.0f;
         public float Smoothing { get; set; } = 0.05f;
@@ -134,23 +136,15 @@ namespace ForceFeedback
                 try
                 {
                     var state = Joystick.GetCurrentState();
-                    float currentAngle = (32767.5f - state.X) / 32767.5f;
+                    float rawAngle = (state.X - 32767.5f) / 32767.5f;
+                    float currentAngle = _settings.InvertSteering ? -rawAngle : rawAngle;
                     targetAngle = Math.Clamp(targetAngle, -1f, 1f);
-                    if (Math.Abs(targetAngle) < 0.02f)
-                    {
-                        targetAngle = 0f;
-                        _integralError *= 0.5f;
-                    }
 
                     float error = targetAngle - currentAngle;
-                    if (Math.Abs(error) < 0.003f)
-                    {
-                        error = 0f;
-                    }
 
                     _integralError += error;
                     _integralError = Math.Clamp(_integralError, -_settings.MaxIntegral, _settings.MaxIntegral);
-                    if (Math.Sign(error) != Math.Sign(_lastError) || Math.Abs(error) < 0.02f)
+                    if (Math.Sign(error) != Math.Sign(_lastError))
                     {
                         _integralError *= 0.5f;
                     }
@@ -160,16 +154,11 @@ namespace ForceFeedback
 
                     float force = error * _settings.Kp + _integralError * _settings.Ki + derivative * _settings.Kd;
                     float absError = Math.Abs(error);
-                    if (absError > 0.0f && absError < 0.18f)
+                    if (_settings.CenterBoost > 0.0f && absError > 0.0f && absError < 0.18f)
                     {
                         float ramp = absError / 0.18f;
-                        float assist = Math.Sign(error) * (0.12f + ramp * 0.18f);
+                        float assist = Math.Sign(error) * (ramp * _settings.CenterBoost);
                         force += assist;
-                    }
-
-                    if (Math.Abs(targetAngle) < 0.02f && Math.Abs(currentAngle) > 0.05f)
-                    {
-                        force = -currentAngle * 0.12f;
                     }
 
                     force = Math.Clamp(force, -_settings.MaxPidForce, _settings.MaxPidForce);
@@ -467,6 +456,11 @@ namespace ForceFeedback
                 return found;
             }
 
+            var fg = GetForegroundWindow();
+            if (fg != IntPtr.Zero) return fg;
+            var dt = GetDesktopWindow();
+            if (dt != IntPtr.Zero) return dt;
+
             Logger.Warn("No valid window handle found for force feedback. Will retry on next scan.");
             return IntPtr.Zero;
         }
@@ -502,6 +496,8 @@ namespace ForceFeedback
                             Logger.Info($"Using window handle: {_windowHandle}");
                         }
 
+                        try { joystick.Unacquire(); } catch { }
+
                         try
                         {
                             joystick.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.Exclusive);
@@ -511,6 +507,7 @@ namespace ForceFeedback
                             Logger.Warn($"Exclusive access failed (0x{sdxEx.HResult:X8}), retrying in non-exclusive mode");
                             try
                             {
+                                try { joystick.Unacquire(); } catch { }
                                 joystick.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
                             }
                             catch (SharpDX.SharpDXException fallbackEx)

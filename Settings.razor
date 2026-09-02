@@ -1,0 +1,227 @@
+@page "/plugins/adjustments/zkhan4509.realforcefeedback"
+@using ETS2LA.Settings
+@using ETS2LA.UI.Shared.Components
+@using ForceFeedback
+@using static ETS2LA.Translations.T
+
+@code {
+    private SettingsHandler _settingsHandler = new SettingsHandler();
+    private FfbSettings _settings = new FfbSettings();
+    private const string SettingsFilename = "realffb_settings.json";
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _settings = _settingsHandler.Load<FfbSettings>(SettingsFilename);
+    }
+
+    private void SaveSettings()
+    {
+        _settingsHandler.Save(SettingsFilename, _settings);
+    }
+
+    private float Kp
+    {
+        get => _settings.Kp;
+        set { _settings.Kp = value; SaveSettings(); }
+    }
+
+    private float Ki
+    {
+        get => _settings.Ki;
+        set { _settings.Ki = value; SaveSettings(); }
+    }
+
+    private float Kd
+    {
+        get => _settings.Kd;
+        set { _settings.Kd = value; SaveSettings(); }
+    }
+
+    private float MaxIntegral
+    {
+        get => _settings.MaxIntegral;
+        set { _settings.MaxIntegral = value; SaveSettings(); }
+    }
+
+    private float CenterBoost
+    {
+        get => _settings.CenterBoost;
+        set { _settings.CenterBoost = value; SaveSettings(); }
+    }
+
+    private bool InvertSteering
+    {
+        get => _settings.InvertSteering;
+        set { _settings.InvertSteering = value; SaveSettings(); }
+    }
+
+    private float MaxPidForce
+    {
+        get => _settings.MaxPidForce;
+        set { _settings.MaxPidForce = value; SaveSettings(); }
+    }
+
+    private float MaxTotalForce
+    {
+        get => _settings.MaxTotalForce;
+        set { _settings.MaxTotalForce = value; SaveSettings(); }
+    }
+
+    private float Smoothing
+    {
+        get => _settings.Smoothing;
+        set { _settings.Smoothing = value; SaveSettings(); }
+    }
+
+    private bool EnableEngineVibration
+    {
+        get => _settings.EnableEngineVibration;
+        set { _settings.EnableEngineVibration = value; SaveSettings(); }
+    }
+
+    private float EngineVibrationScale
+    {
+        get => _settings.EngineVibrationScale;
+        set { _settings.EngineVibrationScale = value; SaveSettings(); }
+    }
+
+    private bool EnableBumpEffects
+    {
+        get => _settings.EnableBumpEffects;
+        set { _settings.EnableBumpEffects = value; SaveSettings(); }
+    }
+
+    private float BumpSensitivity
+    {
+        get => _settings.BumpSensitivity;
+        set { _settings.BumpSensitivity = value; SaveSettings(); }
+    }
+
+    private float MaxBumpForce
+    {
+        get => _settings.MaxBumpForce;
+        set { _settings.MaxBumpForce = value; SaveSettings(); }
+    }
+}
+
+<div class="flex flex-col w-108 m-5 ml-8 gap-6 pb-12">
+    <div class="flex flex-col gap-1">
+        <h1 class="text-xl font-bold">@_("Real Force Feedback Settings")</h1>
+        <p class="text-sm text-description">@_("Configure PID steering gains, engine vibration, and bump force feedback response.")</p>
+    </div>
+
+    <Separator Label=@(_("Steering PID Response")) />
+
+    <Slider Title=@(_("Proportional Gain (Kp)"))
+            Description=@(_("Proportional response force multiplier for steering error."))
+            Min="@(0f)"
+            Max="@(20f)"
+            Step="@(0.1f)"
+            Value="@Kp"
+            ValueChanged="@((float v) => Kp = v)" />
+
+    <Slider Title=@(_("Integral Gain (Ki)"))
+            Description=@(_("Integral correction gain for steady-state steering error."))
+            Min="@(0f)"
+            Max="@(2f)"
+            Step="@(0.05f)"
+            Value="@Ki"
+            ValueChanged="@((float v) => Ki = v)" />
+
+    <Slider Title=@(_("Derivative Gain (Kd)"))
+            Description=@(_("Damping force multiplier against fast steering movement."))
+            Min="@(0f)"
+            Max="@(10f)"
+            Step="@(0.1f)"
+            Value="@Kd"
+            ValueChanged="@((float v) => Kd = v)" />
+
+    <Slider Title=@(_("Max Integral Term"))
+            Description=@(_("Clamps the maximum accumulated integral error."))
+            Min="@(0f)"
+            Max="@(1f)"
+            Step="@(0.05f)"
+            Value="@MaxIntegral"
+            ValueChanged="@((float v) => MaxIntegral = v)" />
+
+    <Slider Title=@(_("Center Boost / Stiffness"))
+            Description=@(_("Optional extra force boost near center. Set to 0.0 for a smooth natural feel without center snapping."))
+            Min="@(0f)"
+            Max="@(0.5f)"
+            Step="@(0.01f)"
+            Value="@CenterBoost"
+            ValueChanged="@((float v) => CenterBoost = v)" />
+
+    <Switch Title=@(_("Invert Steering Axis"))
+            Description=@(_("Flips the steering force feedback direction if your physical wheel turns opposite to in-game steering."))
+            Value="@InvertSteering"
+            ValueChanged="@((bool v) => InvertSteering = v)" />
+
+    <Separator Label=@(_("Force & Smoothing Constraints")) Class="mt-4" />
+
+    <Slider Title=@(_("Max PID Force"))
+            Description=@(_("Limits the maximum force output generated by the PID controller."))
+            Min="@(0.1f)"
+            Max="@(1f)"
+            Step="@(0.05f)"
+            Value="@MaxPidForce"
+            ValueChanged="@((float v) => MaxPidForce = v)" />
+
+    <Slider Title=@(_("Max Total Force"))
+            Description=@(_("Overall maximum force limit applied to force feedback motors."))
+            Min="@(0.1f)"
+            Max="@(1f)"
+            Step="@(0.05f)"
+            Value="@MaxTotalForce"
+            ValueChanged="@((float v) => MaxTotalForce = v)" />
+
+    <Slider Title=@(_("Force Smoothing"))
+            Description=@(_("Low-pass filtering factor to smooth out rapid force transitions."))
+            Min="@(0f)"
+            Max="@(0.5f)"
+            Step="@(0.01f)"
+            Value="@Smoothing"
+            ValueChanged="@((float v) => Smoothing = v)" />
+
+    <Separator Label=@(_("Engine Vibration")) Class="mt-4" />
+
+    <Switch Title=@(_("Enable Engine Vibration"))
+            Description=@(_("Simulates engine idle and RPM vibration on the wheel motor."))
+            Value="@EnableEngineVibration"
+            ValueChanged="@((bool v) => EnableEngineVibration = v)" />
+
+    <Slider Title=@(_("Engine Vibration Scale"))
+            Description=@(_("Intensity multiplier for engine vibration force effects."))
+            Class="@(EnableEngineVibration ? "" : "opacity-30 pointer-events-none")"
+            Min="@(0f)"
+            Max="@(3f)"
+            Step="@(0.1f)"
+            Value="@EngineVibrationScale"
+            ValueChanged="@((float v) => EngineVibrationScale = v)" />
+
+    <Separator Label=@(_("Road Bump Effects")) Class="mt-4" />
+
+    <Switch Title=@(_("Enable Bump Effects"))
+            Description=@(_("Translates vertical chassis acceleration into road bump forces."))
+            Value="@EnableBumpEffects"
+            ValueChanged="@((bool v) => EnableBumpEffects = v)" />
+
+    <Slider Title=@(_("Bump Sensitivity"))
+            Description=@(_("Sensitivity threshold to road surface bumps."))
+            Class="@(EnableBumpEffects ? "" : "opacity-30 pointer-events-none")"
+            Min="@(0.01f)"
+            Max="@(0.5f)"
+            Step="@(0.01f)"
+            Value="@BumpSensitivity"
+            ValueChanged="@((float v) => BumpSensitivity = v)" />
+
+    <Slider Title=@(_("Max Bump Force"))
+            Description=@(_("Maximum allowable force impulse for road bumps."))
+            Class="@(EnableBumpEffects ? "" : "opacity-30 pointer-events-none")"
+            Min="@(0.05f)"
+            Max="@(1f)"
+            Step="@(0.05f)"
+            Value="@MaxBumpForce"
+            ValueChanged="@((float v) => MaxBumpForce = v)" />
+</div>
