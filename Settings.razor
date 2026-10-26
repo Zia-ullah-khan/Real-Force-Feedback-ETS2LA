@@ -5,6 +5,11 @@
 @using static ETS2LA.Translations.T
 
 @code {
+    private static readonly string[] SteeringAxisOptions =
+    {
+        "X", "Y", "Z", "Rotation X", "Rotation Y", "Rotation Z", "Slider 1", "Slider 2"
+    };
+
     private SettingsHandler _settingsHandler = new SettingsHandler();
     private FfbSettings _settings = new FfbSettings();
     private const string SettingsFilename = "realffb_settings.json";
@@ -42,6 +47,16 @@
     {
         get => _settings.MaxIntegral;
         set { _settings.MaxIntegral = value; SaveSettings(); }
+    }
+
+    private int SteeringAxisIndex
+    {
+        get => (int)_settings.SteeringAxis;
+        set
+        {
+            _settings.SteeringAxis = (SteeringAxis)value;
+            SaveSettings();
+        }
     }
 
     private float CenterBoost
@@ -112,6 +127,12 @@
     </div>
 
     <Separator Label=@(_("Steering PID Response")) />
+
+    <Dropdown Title=@(_("Steering Axis"))
+              Description=@(_("Select the DirectInput axis that moves with your wheel. Watch the input axis value in ETS2LA Controls while turning the wheel."))
+              Options="@SteeringAxisOptions"
+              SelectedIndex="@SteeringAxisIndex"
+              SelectedIndexChanged="@((int index) => SteeringAxisIndex = index)" />
 
     <Slider Title=@(_("Proportional Gain (Kp)"))
             Description=@(_("Proportional response force multiplier for steering error."))

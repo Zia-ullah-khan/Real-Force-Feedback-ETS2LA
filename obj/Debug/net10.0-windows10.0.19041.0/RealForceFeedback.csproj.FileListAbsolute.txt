@@ -1,0 +1,9 @@
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/EmbeddedAttribute.cs
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/ValidatableTypeAttribute.cs
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.csproj.AssemblyReference.cache
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/rpswa.dswa.cache.json
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.GeneratedMSBuildEditorConfig.editorconfig
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.AssemblyInfoInputs.cache
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.AssemblyInfo.cs
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.csproj.CoreCompileInputs.cache
+/workspaces/Euro-Truck-Simulator-2-Lane-Assist/Real-Force-Feedback-ETS2LA/obj/Debug/net10.0-windows10.0.19041.0/RealForceFeedback.sourcelink.json

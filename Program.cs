@@ -4,7 +4,6 @@ using ETS2LA.Game.Telemetry;
 using ETS2LA.Backend.Events;
 using ETS2LA.Notifications;
 using ETS2LA.Settings;
-using ETS2LA.Controls.Windows;
 using SharpDX.DirectInput;
 using System.Diagnostics;
 using System.Numerics;
@@ -12,6 +11,18 @@ using System.Runtime.InteropServices;
 
 namespace ForceFeedback
 {
+    public enum SteeringAxis
+    {
+        X,
+        Y,
+        Z,
+        RotationX,
+        RotationY,
+        RotationZ,
+        Slider1,
+        Slider2
+    }
+
     [Serializable]
     public class FfbSettings
     {
@@ -20,6 +31,7 @@ namespace ForceFeedback
         public float Kd { get; set; } = 2.5f;
         public float MaxIntegral { get; set; } = 0.35f;
 
+        public SteeringAxis SteeringAxis { get; set; } = SteeringAxis.X;
         public bool InvertSteering { get; set; } = true;
         public float CenterBoost { get; set; } = 0.0f;
         public float MaxPidForce { get; set; } = 0.45f;
@@ -54,10 +66,16 @@ namespace ForceFeedback
         private ConstantForce _cachedConstantForce = new ConstantForce();
         private EffectParameters? _cachedEngineParams;
         private PeriodicForce _cachedPeriodic = new PeriodicForce();
+        private readonly int _actuatorAxisId;
+        private readonly int _actuatorAxisOffset;
+        private readonly bool? _previousAutoCenter;
 
-        public WheelDevice(FfbSettings settings)
+        public WheelDevice(FfbSettings settings, int actuatorAxisId, int actuatorAxisOffset, bool? previousAutoCenter)
         {
             _settings = settings;
+            _actuatorAxisId = actuatorAxisId;
+            _actuatorAxisOffset = actuatorAxisOffset;
+            _previousAutoCenter = previousAutoCenter;
         }
 
         public void ApplySettings(FfbSettings settings)
@@ -75,7 +93,8 @@ namespace ForceFeedback
                 try
                 {
                     var state = Joystick.GetCurrentState();
-                    float currentAngle = (32767.5f - state.X) / 32767.5f;
+                    float rawAngle = ReadSteeringAxis(state);
+                    float currentAngle = _settings.InvertSteering ? -rawAngle : rawAngle;
                     float force = -currentAngle * 0.15f;
                     force = Math.Clamp(force, -_settings.MaxPidForce, _settings.MaxPidForce);
 
@@ -107,7 +126,7 @@ namespace ForceFeedback
                 TriggerRepeatInterval = 0,
                 StartDelay = 0
             };
-            effectParams.SetAxes(new int[] { 0 }, new int[] { 0 });
+            effectParams.SetAxes(new[] { _actuatorAxisOffset }, new[] { 0 });
             return effectParams;
         }
 
@@ -116,14 +135,14 @@ namespace ForceFeedback
             var effectParams = new EffectParameters
             {
                 Flags = EffectFlags.Cartesian,
-                Duration = 10000,
+                Duration = int.MaxValue,
                 Gain = 10000,
                 SamplePeriod = 0,
                 TriggerButton = -1,
                 TriggerRepeatInterval = 0,
                 StartDelay = 0
             };
-            effectParams.SetAxes(new int[] { 0 }, new int[] { 0 });
+            effectParams.SetAxes(new[] { _actuatorAxisId }, new[] { 0 });
             return effectParams;
         }
 
@@ -136,7 +155,7 @@ namespace ForceFeedback
                 try
                 {
                     var state = Joystick.GetCurrentState();
-                    float rawAngle = (state.X - 32767.5f) / 32767.5f;
+                    float rawAngle = ReadSteeringAxis(state);
                     float currentAngle = _settings.InvertSteering ? -rawAngle : rawAngle;
                     targetAngle = Math.Clamp(targetAngle, -1f, 1f);
 
@@ -187,6 +206,24 @@ namespace ForceFeedback
                     _effectUpdateDisabled = true;
                 }
             }
+        }
+
+        private float ReadSteeringAxis(JoystickState state)
+        {
+            int rawValue = _settings.SteeringAxis switch
+            {
+                SteeringAxis.X => state.X,
+                SteeringAxis.Y => state.Y,
+                SteeringAxis.Z => state.Z,
+                SteeringAxis.RotationX => state.RotationX,
+                SteeringAxis.RotationY => state.RotationY,
+                SteeringAxis.RotationZ => state.RotationZ,
+                SteeringAxis.Slider1 => state.Sliders != null && state.Sliders.Length > 0 ? state.Sliders[0] : 32768,
+                SteeringAxis.Slider2 => state.Sliders != null && state.Sliders.Length > 1 ? state.Sliders[1] : 32768,
+                _ => state.X
+            };
+
+            return Math.Clamp((rawValue - 32767.5f) / 32767.5f, -1f, 1f);
         }
 
         public bool InitializeEffect()
@@ -337,25 +374,25 @@ namespace ForceFeedback
         {
             lock (_lock)
             {
-                try
+                if (IsInitialized && ConstantForceEffect != null && _cachedEffectParams != null)
                 {
-                    if (IsInitialized && ConstantForceEffect != null && _cachedEffectParams != null)
+                    try
                     {
                         _cachedConstantForce.Magnitude = 0;
                         _cachedEffectParams.Parameters = _cachedConstantForce;
                         ConstantForceEffect.SetParameters(_cachedEffectParams, EffectParameterFlags.TypeSpecificParameters);
                     }
-                    
-                    IsInitialized = false;
-                    ConstantForceEffect?.Stop();
-                    ConstantForceEffect?.Dispose();
-                    ConstantForceEffect = null;
-
-                    EngineEffect?.Stop();
-                    EngineEffect?.Dispose();
-                    EngineEffect = null;
+                    catch (Exception) { }
                 }
-                catch (Exception) { }
+
+                IsInitialized = false;
+                try { ConstantForceEffect?.Stop(); } catch (Exception) { }
+                try { ConstantForceEffect?.Dispose(); } catch (Exception) { }
+                ConstantForceEffect = null;
+
+                try { EngineEffect?.Stop(); } catch (Exception) { }
+                try { EngineEffect?.Dispose(); } catch (Exception) { }
+                EngineEffect = null;
             }
         }
 
@@ -368,8 +405,9 @@ namespace ForceFeedback
                 {
                     try 
                     { 
-                        Joystick.Properties.AutoCenter = true;
-                        Logger.Info($"Re-enabled auto-center for {DeviceName}");
+                        if (_previousAutoCenter.HasValue)
+                            Joystick.Properties.AutoCenter = _previousAutoCenter.Value;
+                        Logger.Info($"Restored auto-center for {DeviceName}");
                     } 
                     catch { }
                 }
@@ -402,15 +440,16 @@ namespace ForceFeedback
         };
 
         private List<WheelDevice> _wheels = new List<WheelDevice>();
+        private DirectInput? _directInput;
         public float TargetAngle = 0;
         private float _lastRpm = 0;
         private float _lastSpeed = 0;
         private Vector3 _lastAcceleration = Vector3.Zero;
         private IntPtr _windowHandle = IntPtr.Zero;
-        private int _scanRetryCount = 0;
-        private const int MaxScanRetries = 300;
+        private DateTime _lastScanTime = DateTime.MinValue;
         private bool _isScanning = false;
         private readonly object _scanLock = new object();
+        private readonly object _wheelLock = new object();
 
         private SettingsHandler? _settingsHandler;
         private FfbSettings _settings = new FfbSettings();
@@ -475,14 +514,32 @@ namespace ForceFeedback
 
             try
             {
-                var connected = SharpDXControlsBackend.Current._connectedJoysticks;
-                Logger.Info($"Found {connected.Count} connected joysticks in ETS2LA controls backend.");
+                _directInput ??= new DirectInput();
+                var connected = _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly);
+                var connectedGuids = connected.Select(device => device.InstanceGuid).ToHashSet();
+                Logger.Info($"Found {connected.Count} connected joystick devices.");
 
-                foreach (var joystick in connected)
+                lock (_wheelLock)
                 {
-                    if (_wheels.Any(w => w.InstanceGuid == joystick.Information.InstanceGuid))
-                        continue;
+                    var disconnected = _wheels.Where(wheel => !connectedGuids.Contains(wheel.InstanceGuid)).ToList();
+                    foreach (var wheel in disconnected)
+                    {
+                        _wheels.Remove(wheel);
+                        wheel.Dispose();
+                    }
+                }
 
+                foreach (var device in connected)
+                {
+                    lock (_wheelLock)
+                    {
+                        if (_wheels.Any(w => w.InstanceGuid == device.InstanceGuid))
+                            continue;
+                    }
+
+                    Joystick? joystick = null;
+                    WheelDevice? wheel = null;
+                    bool? previousAutoCenter = null;
                     try
                     {
                         if (_windowHandle == IntPtr.Zero)
@@ -496,37 +553,35 @@ namespace ForceFeedback
                             Logger.Info($"Using window handle: {_windowHandle}");
                         }
 
-                        try { joystick.Unacquire(); } catch { }
+                        joystick = new Joystick(_directInput, device.InstanceGuid);
 
                         try
                         {
-                            joystick.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.Exclusive);
+                            joystick.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
                         }
-                        catch (SharpDX.SharpDXException sdxEx)
+                        catch (SharpDX.SharpDXException ex)
                         {
-                            Logger.Warn($"Exclusive access failed (0x{sdxEx.HResult:X8}), retrying in non-exclusive mode");
-                            try
-                            {
-                                try { joystick.Unacquire(); } catch { }
-                                joystick.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
-                            }
-                            catch (SharpDX.SharpDXException fallbackEx)
-                            {
-                                Logger.Warn($"Non-exclusive access also failed (0x{fallbackEx.HResult:X8}), skipping device until retry");
-                                _windowHandle = IntPtr.Zero;
-                                continue;
-                            }
+                            Logger.Warn($"Non-exclusive access failed for {device.InstanceName} (0x{ex.HResult:X8}); skipping to preserve ETS2LA controls");
+                            continue;
                         }
 
                         joystick.Acquire();
 
+                        var actuators = joystick.GetObjects(DeviceObjectTypeFlags.ForceFeedbackActuator);
+                        if (actuators.Length == 0)
+                        {
+                            Logger.Warn($"No force-feedback actuator found for {device.InstanceName}");
+                            continue;
+                        }
+
                         try
                         {
+                            previousAutoCenter = joystick.Properties.AutoCenter;
                             joystick.Properties.AutoCenter = false;
                         }
                         catch (Exception) { }
 
-                        var wheel = new WheelDevice(_settings)
+                        wheel = new WheelDevice(_settings, actuators[0].ObjectId, actuators[0].Offset, previousAutoCenter)
                         {
                             Joystick = joystick,
                             DeviceName = joystick.Information.InstanceName,
@@ -540,13 +595,23 @@ namespace ForceFeedback
                         }
 
                         wheel.InitializeEngineEffect();
-                        _wheels.Add(wheel);
+                        lock (_wheelLock)
+                            _wheels.Add(wheel);
                         wheel.CenterToNeutral();
                         Logger.Info($"Added wheel: {wheel.DeviceName}");
+                        wheel = null;
+                        joystick = null;
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warn($"Could not add device {joystick.Information.InstanceName}: {ex.Message}");
+                        Logger.Warn($"Could not add device {joystick?.Information.InstanceName ?? device.InstanceName}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (wheel != null)
+                            wheel.Dispose();
+                        else
+                            joystick?.Dispose();
                     }
                 }
             }
@@ -556,9 +621,11 @@ namespace ForceFeedback
             }
             finally
             {
+                _lastScanTime = DateTime.UtcNow;
                 lock (_scanLock)
                 {
                     _isScanning = false;
+                    Monitor.PulseAll(_scanLock);
                 }
             }
         }
@@ -567,27 +634,24 @@ namespace ForceFeedback
         {
             base.Init();
             Logger.Info("ForceFeedback plugin Init() called");
-            ScanForWheels();
         }
 
         public override void OnEnable()
         {
-            base.OnEnable();
             Logger.Info("ForceFeedback plugin OnEnable() called");
 
             _settingsHandler = new SettingsHandler();
             _settings = _settingsHandler.Load<FfbSettings>(SettingsFilename);
             _settingsHandler.RegisterListener<FfbSettings>(SettingsFilename, OnSettingsChanged);
-            Events.Current.Subscribe<float>("ForceFeedback.Output", OnControlEvent);
             Events.Current.Subscribe<GameTelemetryData>(GameTelemetry.Current.EventString, OnTelemetry);
 
             ScanForWheels();
+            base.OnEnable();
         }
 
         public override void OnDisable()
         {
             base.OnDisable();
-            Events.Current.Unsubscribe<float>("ForceFeedback.Output", OnControlEvent);
             Events.Current.Unsubscribe<GameTelemetryData>(GameTelemetry.Current.EventString, OnTelemetry);
             _settingsHandler?.UnregisterListener<FfbSettings>(SettingsFilename, OnSettingsChanged);
             _settingsHandler?.Dispose();
@@ -596,28 +660,24 @@ namespace ForceFeedback
             DisposeResources();
         }
 
-        public void OnControlEvent(float steering)
-        {
-            TargetAngle = steering;
-        }
-
         public void OnTelemetry(GameTelemetryData data)
         {
+            if (data.truckFloat == null || data.truckVector == null)
+                return;
+
             _lastRpm = data.truckFloat.engineRpm;
             _lastSpeed = data.truckFloat.speed;
             _lastAcceleration = data.truckVector.acceleration;
-            if (data.truckFloat != null)
-            {
-                TargetAngle = data.truckFloat.gameSteer;
-            }
+            TargetAngle = data.truckFloat.gameSteer;
         }
 
         private void OnSettingsChanged(FfbSettings data)
         {
             _settings = data;
-            foreach (var wheel in _wheels)
+            lock (_wheelLock)
             {
-                wheel.ApplySettings(data);
+                foreach (var wheel in _wheels)
+                    wheel.ApplySettings(data);
             }
             Logger.Info("RealFFB settings updated");
         }
@@ -626,18 +686,16 @@ namespace ForceFeedback
         {
             try
             {
-                if (_wheels.Count == 0 && _scanRetryCount < MaxScanRetries && !_isScanning)
-                {
-                    _scanRetryCount++;
-                    _windowHandle = IntPtr.Zero;
-                    Logger.Info($"Retrying wheel scan (attempt {_scanRetryCount}/{MaxScanRetries})...");
+                if (!_isScanning && (DateTime.UtcNow - _lastScanTime).TotalSeconds >= 2)
                     ScanForWheels();
-                }
-                var wheels = _wheels.ToList();
-                foreach (var wheel in wheels)
+
+                lock (_wheelLock)
                 {
-                    wheel.UpdateToAngle(TargetAngle);
-                    wheel.UpdateTelemetry(_lastRpm, _lastSpeed, _lastAcceleration);
+                    foreach (var wheel in _wheels)
+                    {
+                        wheel.UpdateToAngle(TargetAngle);
+                        wheel.UpdateTelemetry(_lastRpm, _lastSpeed, _lastAcceleration);
+                    }
                 }
             }
             catch (Exception ex)
@@ -649,13 +707,23 @@ namespace ForceFeedback
         private void DisposeResources()
         {
             Logger.Info("Disposing force feedback resources - centering and unlocking wheels...");
-            foreach (var wheel in _wheels)
+            lock (_scanLock)
             {
-                wheel.Dispose();
+                while (_isScanning)
+                    Monitor.Wait(_scanLock);
             }
-            _wheels.Clear();
+
+            lock (_wheelLock)
+            {
+                foreach (var wheel in _wheels)
+                    wheel.Dispose();
+                _wheels.Clear();
+            }
+
+            _directInput?.Dispose();
+            _directInput = null;
             _windowHandle = IntPtr.Zero;
-            _scanRetryCount = 0;
+            _lastScanTime = DateTime.MinValue;
             Logger.Info("Force feedback resources disposed.");
         }
     }
